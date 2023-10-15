@@ -4,3 +4,6 @@ Surface Song Data/nowplaying.txt
 Surface Song Data/nowplaying.txt~RF4cf6899.TMP
 Surface Song Data/songdict.txt
 Surface Song Data/songlog.db
+data/failed_songs.json
+data/
+session_key
