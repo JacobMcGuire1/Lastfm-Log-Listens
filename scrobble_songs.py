@@ -14,7 +14,7 @@ LASTFM_USERNAME = os.getenv('LASTFM_USERNAME')
 LASTFM_PASSWORD_HASH = pylast.md5(os.getenv('LASTFM_PASSWORD'))
 SESSION_KEY_FILE = "session_key"
 
-import_data_folder = "Surface Song Data"
+
 progress_folder = "data"
 
 def authenticate():
@@ -66,14 +66,19 @@ def ticks_to_unix_timestamp(ticks):
 
 network = authenticate()
 
-songdict = {}
+surfaceold = "./surface/Surface Song Data Older (done)"
+surfacenew = "./surface/surface song data newer"
+ybbinold = "./ybbinpc pre win11/older one"
+ybbinnew = "./ybbinpc pre win11/newer (large)"
+
+folders = [surfaceold, surfacenew, ybbinold, ybbinnew]
+
+failed_in_run = 0
+succeeded_in_run = 0
+not_found_in_dict = 0
+
 scrobbled_songs = {}
 failed_songs = {}
-
-songdictfile = import_data_folder + "/songdict.txt"
-if os.path.isfile(songdictfile):
-    with open(songdictfile, encoding="utf8") as f:
-        songdict = json.loads(f.read())
 
 scrobbled_songs_file = progress_folder + "/scrobbled_songs.json"
 if os.path.isfile(scrobbled_songs_file):
@@ -85,30 +90,52 @@ if os.path.isfile(failed_songs_file):
     with open(failed_songs_file) as f:
         failed_songs = json.loads(f.read())
 
-con = sqlite3.connect(import_data_folder + "/songlog.db")
-cur = con.cursor()
-res = cur.execute("SELECT SongKey, Time FROM Listens ORDER BY Time asc")
-result = res.fetchall()
-con.close()
+for import_data_folder in folders:
+    songdict = {}
+    songdictfile = import_data_folder + "/songdict.txt"
+    if os.path.isfile(songdictfile):
+        with open(songdictfile, encoding="utf8") as f:
+            songdict = json.loads(f.read())
 
-failed_in_run = 0
-succeeded_in_run = 0
+    con = sqlite3.connect(import_data_folder + "/songlog.db")
+    cur = con.cursor()
+    res = cur.execute("SELECT SongKey, Time FROM Listens ORDER BY Time asc")
+    result = res.fetchall()
+    con.close()
 
-for SongKey, Time in result:
-    rowcount = res.rowcount
-    timestamp = int(ticks_to_unix_timestamp(Time))
-    
-    song = songdict[SongKey]
-    artist = song["Artist"]
-    title = song["Title"]
-    album = song["Artist"]
+    result.sort(key=lambda x: x[1], reverse=False)
 
-    logs_key = str(SongKey) + "-" + str(Time)
-    
-    two_weeks_ago = get_timestamp_minus_arg(13)
-    response = None
+    for SongKey, Time in result:
+        logs_key = str(SongKey) + "-" + str(Time)
 
-    if logs_key not in scrobbled_songs:
+        if logs_key in scrobbled_songs: 
+            failed_songs.pop(logs_key, None)
+            continue
+        
+        timestamp = int(ticks_to_unix_timestamp(Time))
+
+        song = None
+
+        if (SongKey in songdict):
+            song = songdict[SongKey]
+        else:
+            not_found_in_dict += 1
+            message = "Key not found in songdict (not a lastfm error)"
+            print("Failure: " + SongKey)
+            print("Error Message: " + message + "\n")
+            if (logs_key in failed_songs):
+                failed_songs[logs_key]["ExceptionMessage"].append(message)
+            else:
+                failed_songs[logs_key] = { "SongKey": SongKey, "Time": Time, "ExceptionMessage": [message] }
+            continue
+
+        artist = song["Artist"]
+        title = song["Title"]
+        album = song["Artist"]
+        
+        two_weeks_ago = get_timestamp_minus_arg(13)
+        response = None
+
         print(f"Songkey: {SongKey}, Time in ticks: {Time}, UTC Timestamp: {timestamp}")
         if (logs_key in failed_songs):
             failurecount = len(failed_songs[logs_key]["ExceptionMessage"])
@@ -117,26 +144,25 @@ for SongKey, Time in result:
         try:
             response = network.scrobble(artist=artist, title=title, album=album, timestamp=two_weeks_ago)
             scrobbled_songs[logs_key] = { "SongKey": SongKey, "Time": Time }
-            failed_songs.pop(failed_songs, None)
+            failed_songs.pop(logs_key, None)
             succeeded_in_run += 1
         except Exception as ex:
             failed_in_run += 1
             message = str(ex)
-            print("Failure: ")
-            print(SongKey + ", Message: " + message + "\n")
+            print("Failure: " + SongKey)
+            print("Error Message: " + message + "\n")
             if (logs_key in failed_songs):
                 failed_songs[logs_key]["ExceptionMessage"].append(message)
             else:
                 failed_songs[logs_key] = { "SongKey": SongKey, "Time": Time, "ExceptionMessage": [message] }
+        
+        if failed_in_run > 10: 
+            print("Stopping due to more than 10 failures.")
+            break
     
-    if failed_in_run > 10: 
-        print("Stopping due to more than 10 failures.")
-        break
-    
-    #print(str(response))
-
 print("Successes: " + str(succeeded_in_run))
 print("Failures: " + str(failed_in_run))
+print("Not Found In Dict: " + str(not_found_in_dict))
 
 with open(scrobbled_songs_file, 'w',  encoding="utf8") as f:
         json.dump(scrobbled_songs,f)
@@ -144,14 +170,6 @@ with open(scrobbled_songs_file, 'w',  encoding="utf8") as f:
 with open(failed_songs_file, 'w',  encoding="utf8") as f:
         json.dump(failed_songs,f)
 
-
-
-
-
-
-# print(str(songdict["Ghosts III - 23Ghosts I-IVNine Inch NailsNine Inch Nails"]["Title"]))
-# test_scrobble()
-# print(int(ticks_to_unix_timestamp(638329255785629049)))
 
 
 
