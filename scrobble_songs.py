@@ -2,16 +2,25 @@ import pylast
 import os
 import logging
 import datetime 
-from datetime import timezone, timedelta
+from datetime import timezone, timedelta, datetime
 import json
 import sqlite3
 
+import pytz
+
 logging.basicConfig(level=logging.INFO)
 
-LASTFM_API_KEY = os.getenv('LASTFM_API_KEY')
-LASTFM_SHARED_SECRET = os.getenv('LASTFM_SHARED_SECRET')
-LASTFM_USERNAME = os.getenv('LASTFM_USERNAME')
-LASTFM_PASSWORD_HASH = pylast.md5(os.getenv('LASTFM_PASSWORD'))
+auth_data = {}
+
+auth_data_file = "./authinfo.json"
+if os.path.isfile(auth_data_file):
+    with open(auth_data_file) as f:
+        auth_data = json.loads(f.read())
+
+LASTFM_API_KEY = auth_data["LASTFM_API_KEY"]#os.getenv('LASTFM_API_KEY')
+LASTFM_SHARED_SECRET = auth_data["LASTFM_SHARED_SECRET"]#os.getenv('LASTFM_SHARED_SECRET')
+LASTFM_USERNAME = auth_data["LASTFM_USERNAME"]#os.getenv('LASTFM_USERNAME')
+LASTFM_PASSWORD_HASH = auth_data["LASTFM_PASSWORD_HASH"]#pylast.md5(os.getenv('LASTFM_PASSWORD'))
 SESSION_KEY_FILE = "session_key"
 
 
@@ -63,6 +72,19 @@ def ticks_to_unix_timestamp(ticks):
     delta = datetime.timedelta(seconds=ticks/10000000)
     the_actual_date = start + delta
     return int(the_actual_date.timestamp())
+
+def transform_artist(artist):
+    match artist:
+        case "Chaos Chaos (formerly Smoosh)":
+            return "Chaos Chaos"
+        case _:
+            return artist
+
+def get_current_datetime_string():
+    now = datetime.now()
+    return now.strftime("%d/%m/%Y %H:%M:%S")
+
+print("Starting run at: " + get_current_datetime_string())
 
 network = authenticate()
 
@@ -169,6 +191,8 @@ with open(scrobbled_songs_file, 'w',  encoding="utf8") as f:
 
 with open(failed_songs_file, 'w',  encoding="utf8") as f:
         json.dump(failed_songs,f)
+
+print("Run finished at: " + get_current_datetime_string())
 
 
 

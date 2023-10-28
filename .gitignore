@@ -39,3 +39,6 @@ ybbinpc pre win11/older one/nowplaying.txt
 ybbinpc pre win11/older one/RichPresenceInfo.txt
 ybbinpc pre win11/older one/songdict.txt
 ybbinpc pre win11/older one/songlog.db
+authinfo.json
+.gitignore
+cron-log.txt
