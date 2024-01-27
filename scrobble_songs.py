@@ -54,13 +54,13 @@ def authenticate():
     return network
 
 def get_current_timestamp():
-    dt = datetime.datetime.now(timezone.utc) 
+    dt = datetime.now(timezone.utc) 
     utc_time = dt.replace(tzinfo=timezone.utc) 
     utc_timestamp = str(int(utc_time.timestamp()))
     return utc_timestamp
 
 def get_timestamp_minus_arg(daystoSubtract):
-    dt = datetime.datetime.now(timezone.utc) 
+    dt = datetime.now(timezone.utc) 
     timestamp_to_subtract = timedelta(days=daystoSubtract)
     dt = dt - timestamp_to_subtract
     utc_time = dt.replace(tzinfo=timezone.utc) 
@@ -68,8 +68,8 @@ def get_timestamp_minus_arg(daystoSubtract):
     return utc_timestamp
 
 def ticks_to_unix_timestamp(ticks):
-    start = datetime.datetime(1, 1, 1)
-    delta = datetime.timedelta(seconds=ticks/10000000)
+    start = datetime(1, 1, 1)
+    delta = timedelta(seconds=ticks/10000000)
     the_actual_date = start + delta
     return int(the_actual_date.timestamp())
 
@@ -79,6 +79,15 @@ def transform_artist(artist):
             return "Chaos Chaos"
         case _:
             return artist
+        
+def transform_songkey(songkey):
+    if "SChaos Chaos (formerly Smoosh)" in songkey:
+        songkey = songkey.replace("SChaos Chaos (formerly Smoosh)", "Chaos Chaos")
+    else:
+        songkey = songkey.replace("Chaos Chaos (formerly Smoosh)", "Chaos Chaos")
+    songkey = songkey.replace("Flaming Pie", "Flaming Pie (Archive Collection)")
+    songkey = songkey.replace("Kisses On The Bottom", "Kisses On The Bottom - Complete Kisses")
+    return songkey
 
 def get_current_datetime_string():
     now = datetime.now()
@@ -121,13 +130,30 @@ for import_data_folder in folders:
 
     con = sqlite3.connect(import_data_folder + "/songlog.db")
     cur = con.cursor()
-    res = cur.execute("SELECT SongKey, Time FROM Listens ORDER BY Time asc")
+
+    columns = [i[1] for i in cur.execute('PRAGMA table_info(Listens)')]
+
+    hasListens = True
+
+    if ("Listens" in columns):
+        res = cur.execute("SELECT SongKey, Time, Logged FROM Listens ORDER BY Time asc")
+    else:
+        hasListens = False
+        res = cur.execute("SELECT SongKey, Time FROM Listens ORDER BY Time asc")
+    
     result = res.fetchall()
     con.close()
 
+    if not hasListens:
+        result = [ (*row, '0') for row in result]
+
     result.sort(key=lambda x: x[1], reverse=False)
 
-    for SongKey, Time in result:
+    for SongKey, Time, Logged in result:
+        
+        if Logged == 1:
+            continue
+
         logs_key = str(SongKey) + "-" + str(Time)
 
         if logs_key in scrobbled_songs: 
@@ -141,15 +167,19 @@ for import_data_folder in folders:
         if (SongKey in songdict):
             song = songdict[SongKey]
         else:
-            not_found_in_dict += 1
-            message = "Key not found in songdict (not a lastfm error)"
-            print("Failure: " + SongKey)
-            print("Error Message: " + message + "\n")
-            if (logs_key in failed_songs):
-                failed_songs[logs_key]["ExceptionMessage"].append(message)
+            SongKey = transform_songkey(SongKey)
+            if (SongKey in songdict):
+                song = songdict[SongKey]
             else:
-                failed_songs[logs_key] = { "SongKey": SongKey, "Time": Time, "ExceptionMessage": [message] }
-            continue
+                not_found_in_dict += 1
+                message = "Key not found in songdict (not a lastfm error)"
+                print("Failure: " + SongKey)
+                print("Error Message: " + message + "\n")
+                if (logs_key in failed_songs):
+                    failed_songs[logs_key]["ExceptionMessage"].append(message)
+                else:
+                    failed_songs[logs_key] = { "SongKey": SongKey, "Time": Time, "ExceptionMessage": [message] }
+                continue
 
         artist = song["Artist"]
         title = song["Title"]
